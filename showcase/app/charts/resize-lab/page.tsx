@@ -75,7 +75,7 @@ export default function ResizeLabPage() {
     <main className="mx-auto max-w-5xl space-y-10 p-8">
       {(["bklit", "migrated"] as const).map((impl) => (
         <section key={impl} className="space-y-6">
-          <h1 className="text-xl font-semibold">{impl === "bklit" ? "Bklit UI" : "TanStack Bklit UI"}</h1>
+          <h1 className="text-xl font-semibold">{impl === "bklit" ? "Bklit UI" : "Bklit TanStack Charts"}</h1>
           {SECTIONS.map(([name, Lab]) => (
             <div
               key={name}

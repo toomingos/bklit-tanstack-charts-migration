@@ -1,38 +1,30 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { allCharts } from "@/lib/chart-data";
-import { bundleCssKb, bundleFor, bundleGeo, bundleTotal } from "@/components/live-perf/bundle-data";
-import { type Headline, HeadlineCards, PctCell, type Stat } from "@/components/live-perf/headline-cards";
-import { BKLIT_SHA, type Metric, chartPair, summarise, sweepMeta } from "@/components/live-perf/headline-data";
+import { bundleCssKb, bundleFor } from "@/components/live-perf/bundle-data";
+import { HeadlineCards, PctCell, type Stat } from "@/components/live-perf/headline-cards";
+import { BKLIT_SHA, chartPair, sweepMeta } from "@/components/live-perf/headline-data";
+import { summaryHeadlines } from "@/components/live-perf/summary-headlines";
 
-
-const routes = allCharts.map((c) => c.route);
-
-/** Card figure: geometric mean of per-chart ratios; the values under it are means of the per-chart medians. */
-function card(label: string, metric: Metric, digits = 1, floor = 0): Headline {
-  const s = summarise(routes, metric, floor);
-  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: s?.geo, unit: "ms", digits };
-}
-const headlines: Headline[] = [
-  card("Time to Render", "render"),
-  card("On hover", "busy", 2, 0.05),
-  { label: "Bundle Size", bklit: bundleTotal[0], migrated: bundleTotal[1], ratio: bundleGeo, unit: "KB" },
-];
+export const metadata: Metadata = { title: "Benchmarks" };
 
 const th = "whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground";
 const size = (v: number): Stat => [v, v, v];
 
-export default function OverviewPage() {
+export default function BenchmarksPage() {
   return (
     <div>
       <section className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">Overview</h1>
-        <p className="mt-2 text-muted-foreground">
-          TanStack Bklit UI against Bklit UI on {allCharts.length} charts. Each figure is the change from Bklit UI: negative means less time, less work or a smaller bundle.
+        <h1 className="text-3xl font-semibold tracking-tight">Benchmarks</h1>
+        <p className="mt-2 max-w-3xl text-pretty text-muted-foreground">
+          Bklit TanStack Charts against Bklit UI on all {allCharts.length} charts, with the same data and the same design. Each figure
+          is the change from Bklit UI, so a negative number means less time, less work or a smaller bundle. Charts render faster
+          and do less work on hover; bundles are currently larger.
         </p>
       </section>
 
       <section className="mb-10">
-        <HeadlineCards items={headlines} />
+        <HeadlineCards items={summaryHeadlines} />
       </section>
 
       <section>
@@ -73,8 +65,8 @@ export default function OverviewPage() {
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           Method: {sweepMeta.date}, {sweepMeta.build}, {sweepMeta.runs} interleaved runs with both charts on one page, {sweepMeta.movesPerSide} pointer moves per side
-          per run, bklit-ui {BKLIT_SHA}, TanStack Charts 1.1.0, {sweepMeta.machine}, {sweepMeta.viewport}. Summary cards are geometric means of per-chart ratios.
-          Bundle sizes: esbuild, minified, tree-shaken, React external, one bundle per chart; TanStack Bklit UI also ships {bundleCssKb} KB gzip of shared CSS.
+          per run, bklit-ui {BKLIT_SHA}, TanStack Charts 1.1.0, {sweepMeta.machine}, {sweepMeta.viewport}. The cards at the top are geometric means of the per-chart changes.
+          Bundle sizes: esbuild, minified, tree-shaken, React external, one bundle per chart; Bklit TanStack Charts also ships {bundleCssKb} KB gzip of shared CSS.
         </p>
       </section>
     </div>

@@ -6,3 +6,6 @@
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+# doc snippet type-check output (scripts/check-doc-snippets.mjs)
+.doc-snippets/

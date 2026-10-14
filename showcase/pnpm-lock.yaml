@@ -104,6 +104,9 @@ importers:
       react-use-measure:
         specifier: ^2.1.7
         version: 2.1.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      sugar-high:
+        specifier: 2.5.0
+        version: 2.5.0
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.1
@@ -3317,6 +3320,14 @@ packages:
       '@babel/core':
         optional: true
       babel-plugin-macros:
+        optional: true
+
+  sugar-high@2.5.0:
+    resolution: {integrity: sha512-SPusUAqHpkpAxwGO6bVRegBq/Y6ZYkkZFR18VeH02pqk/l9hHJnc7MQf5Quyo54UQj1jU8u5zUDvj5zBJbA0rQ==}
+    peerDependencies:
+      gpu-lexer: '>=0.0.2'
+    peerDependenciesMeta:
+      gpu-lexer:
         optional: true
 
   supports-color@7.2.0:
@@ -6536,6 +6547,8 @@ snapshots:
     dependencies:
       client-only: 0.0.1
       react: 19.2.8
+
+  sugar-high@2.5.0: {}
 
   supports-color@7.2.0:
     dependencies:

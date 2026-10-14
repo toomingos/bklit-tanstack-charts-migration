@@ -10,7 +10,11 @@ import { cn } from "@/lib/utils";
 const sections = [
   {
     label: "Getting Started",
-    items: [{ label: "Overview", href: "/charts/overview" }],
+    items: [
+      { label: "Installation", href: "/charts/installation" },
+      { label: "Migrating from Bklit UI", href: "/charts/migration" },
+      { label: "Benchmarks", href: "/charts/benchmarks" },
+    ],
   },
   ...chartCategories.map((cat) => ({
     label: cat.label,
@@ -79,10 +83,7 @@ export function ShowcaseLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <SiteHeader
-        menuOpen={menuOpen}
-        onMenuToggle={() => setMenuOpen((o) => !o)}
-      />
+      <SiteHeader menu={{ open: menuOpen, onToggle: () => setMenuOpen((o) => !o) }} />
       <div className="flex flex-1 pt-14">
         {/* Desktop sidebar */}
         <aside className="fixed top-14 bottom-0 hidden w-64 overflow-y-auto border-r border-border bg-background p-4 md:block">

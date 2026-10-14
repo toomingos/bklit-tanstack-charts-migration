@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="funnel" />; }
+import { doc } from "@/lib/chart-docs/funnel";
+export default function Page() { return <ChartDetailPage route="funnel" doc={doc} />; }

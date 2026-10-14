@@ -410,7 +410,7 @@ function LivePerfPanelBody({ chart }: { chart: string }) {
             <tr className="border-b border-border text-left text-muted-foreground">
               <th className="py-1.5 pr-3 font-medium">Metric</th>
               <th className="py-1.5 pr-3 text-right font-medium">Bklit UI</th>
-              <th className="py-1.5 pr-3 text-right font-medium">TanStack Bklit UI</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Bklit TanStack Charts</th>
               <th className="py-1.5 text-right font-medium">Change</th>
             </tr>
           </thead>

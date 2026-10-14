@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="radar" />; }
+import { doc } from "@/lib/chart-docs/radar";
+export default function Page() { return <ChartDetailPage route="radar" doc={doc} />; }

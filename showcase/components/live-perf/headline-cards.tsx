@@ -39,7 +39,7 @@ const tone = {
   worse: "text-red-600/90 dark:text-red-400/90",
 };
 
-/** TanStack Bklit UI against Bklit UI as a signed percentage of bklit's value; negative is less time, work or size. */
+/** Bklit TanStack Charts against Bklit UI as a signed percentage of bklit's value; negative is less time, work or size. */
 export function pct(ratio: number) {
   const p = Math.round((ratio - 1) * 100);
   return p === 0 ? "0%" : `${p < 0 ? "−" : "+"}${Math.abs(p)}%`;
@@ -55,7 +55,7 @@ export function PctCell({ b, m, unit }: { b: Stat | null; m: Stat | null; unit: 
   return (
     <td
       className={`px-3 py-2.5 text-right tabular-nums ${Math.round((r - 1) * 100) < 0 ? tone.better : ""}`}
-      title={ranged ? `Bklit UI ${fmt(b[0], unit, 2)} (${b[1]}–${b[2]}); TanStack Bklit UI ${fmt(m[0], unit, 2)} (${m[1]}–${m[2]})` : undefined}
+      title={ranged ? `Bklit UI ${fmt(b[0], unit, 2)} (${b[1]}–${b[2]}); Bklit TanStack Charts ${fmt(m[0], unit, 2)} (${m[1]}–${m[2]})` : undefined}
     >
       {pct(r)}
       <span className="block text-[11px] font-normal text-muted-foreground">
@@ -78,12 +78,13 @@ export interface Headline {
   pending?: string;
 }
 
-/** Main figure: the signed percentage change; below it Bklit UI → TanStack Bklit UI. */
+/** Main figure: the signed percentage change; below it Bklit UI → Bklit TanStack Charts. */
 function HeadlineCard({ h }: { h: Headline }) {
   const { bklit: b, migrated: m } = h;
   const ready = b !== null && m !== null && b > 0;
   const r = ready ? (h.ratio ?? m / b) : null;
-  const cls = r === null || Math.abs(r - 1) < 0.05 ? "" : r < 1 ? tone.better : tone.worse;
+  // Like the table: a gain is green, everything else plain text.
+  const cls = r !== null && Math.round((r - 1) * 100) < 0 ? tone.better : "";
   const d = h.digits ?? 1;
   return (
     <div className="rounded-xl border border-border bg-card p-5">

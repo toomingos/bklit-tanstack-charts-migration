@@ -32,7 +32,7 @@ export default function BarSquaresDemo({ impl, charts, n: _n }: BarSquaresDemoPr
               useGradient
               gradientStops={[
                 { offset: 0, color: "var(--chart-1)" },
-                { offset: 1, color: "var(--chart-2)" },
+                { offset: 100, color: "var(--chart-2)" },
               ]}
             />
             <Charts.BarSquares dataKey="profit" fill="var(--chart-2)" patternPreset="diagonal" />

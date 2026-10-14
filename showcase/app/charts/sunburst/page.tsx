@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="sunburst" />; }
+import { doc } from "@/lib/chart-docs/sunburst";
+export default function Page() { return <ChartDetailPage route="sunburst" doc={doc} />; }

@@ -201,9 +201,11 @@ interface ChartStageProps {
   chart: string;
   n: number;
   controls: DemoControls;
+  /** Reserve the card's height without mounting the demo (the home gallery mounts each chart as it scrolls into view). */
+  deferred?: boolean;
 }
 
-export function ChartStage({ impl, chart, n, controls }: ChartStageProps) {
+export function ChartStage({ impl, chart, n, controls, deferred = false }: ChartStageProps) {
   const Demo = registry[chart]?.[impl];
   if (!Demo) return null;
   // The spacer and the demo share one grid cell, so the cell is never shorter than the reserve.
@@ -211,7 +213,7 @@ export function ChartStage({ impl, chart, n, controls }: ChartStageProps) {
     <div className="grid w-full">
       <div aria-hidden="true" style={{ gridArea: "1 / 1", paddingTop: reserve[chart] }} />
       <div className="w-full min-w-0" style={{ gridArea: "1 / 1" }}>
-        <Demo impl={impl} n={n} controls={controls} />
+        {deferred ? null : <Demo impl={impl} n={n} controls={controls} />}
       </div>
     </div>
   );

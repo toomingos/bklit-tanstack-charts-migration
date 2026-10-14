@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="choropleth" />; }
+import { doc } from "@/lib/chart-docs/choropleth";
+export default function Page() { return <ChartDetailPage route="choropleth" doc={doc} />; }

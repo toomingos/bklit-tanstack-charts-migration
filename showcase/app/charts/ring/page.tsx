@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="ring" />; }
+import { doc } from "@/lib/chart-docs/ring";
+export default function Page() { return <ChartDetailPage route="ring" doc={doc} />; }

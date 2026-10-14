@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="composed" />; }
+import { doc } from "@/lib/chart-docs/composed";
+export default function Page() { return <ChartDetailPage route="composed" doc={doc} />; }

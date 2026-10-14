@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="gauge" />; }
+import { doc } from "@/lib/chart-docs/gauge";
+export default function Page() { return <ChartDetailPage route="gauge" doc={doc} />; }

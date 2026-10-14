@@ -2,7 +2,6 @@
 
 @source "../../repos/bklit-ui/packages/ui/src/**/*.tsx";
 @source "../repos/bklit-ui/packages/ui/src/**/*.tsx";
-@source "../migrated/charts/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -173,12 +172,14 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.56 0.021 213.5);
 
-  /* Chart palette (dark) */
-  --chart-1: var(--color-zinc-800);
-  --chart-2: var(--color-zinc-600);
+  /* Chart palette (dark). bklit's tokens use zinc-800 to zinc-300 (packages/studio/src/styles/bklit-tokens.css:100-104),
+     which puts the primary series at near-background contrast; the showcase mirrors the light ramp instead, strongest
+     first. Both implementations read these variables, so the comparison is unchanged. */
+  --chart-1: var(--color-zinc-200);
+  --chart-2: var(--color-zinc-400);
   --chart-3: var(--color-zinc-500);
-  --chart-4: var(--color-zinc-400);
-  --chart-5: var(--color-zinc-300);
+  --chart-4: var(--color-zinc-600);
+  --chart-5: var(--color-zinc-700);
 
   /* Chart component dark variables */
   --chart-background: oklch(0.145 0 0);
@@ -221,4 +222,28 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Docs code blocks (sugar-high token colors) */
+:root {
+  --sh-identifier: oklch(0.3 0.01 260);
+  --sh-sign: oklch(0.55 0.01 260);
+  --sh-keyword: oklch(0.55 0.19 20);
+  --sh-string: oklch(0.52 0.12 160);
+  --sh-class: oklch(0.52 0.14 250);
+  --sh-property: oklch(0.48 0.15 255);
+  --sh-entity: oklch(0.5 0.17 300);
+  --sh-jsxliterals: oklch(0.3 0.01 260);
+  --sh-comment: oklch(0.62 0.01 260);
+}
+.dark {
+  --sh-identifier: oklch(0.92 0.005 260);
+  --sh-sign: oklch(0.65 0.01 260);
+  --sh-keyword: oklch(0.74 0.15 20);
+  --sh-string: oklch(0.8 0.1 160);
+  --sh-class: oklch(0.8 0.12 60);
+  --sh-property: oklch(0.78 0.1 240);
+  --sh-entity: oklch(0.8 0.11 300);
+  --sh-jsxliterals: oklch(0.92 0.005 260);
+  --sh-comment: oklch(0.6 0.01 260);
 }

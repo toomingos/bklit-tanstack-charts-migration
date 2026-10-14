@@ -9,11 +9,10 @@ import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: {
-    default: "Chart Showcase",
-    template: "%s | Chart Showcase",
+    default: "Bklit TanStack Charts",
+    template: "%s | Bklit TanStack Charts",
   },
-  description:
-    "Bklit UI and TanStack Bklit UI charts, side by side.",
+  description: "Bklit UI's charts, now on TanStack Charts. 25 charts and utilities for React.",
   robots: { index: false, follow: false },
 };
 

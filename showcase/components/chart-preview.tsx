@@ -16,7 +16,7 @@ interface ChartPreviewProps {
 
 const implLabel: Record<ChartPreviewProps["impl"], string> = {
   bklit: "Bklit UI",
-  migrated: "TanStack Bklit UI",
+  migrated: "Bklit TanStack Charts",
 };
 
 export function ChartPreview({ impl, chart, n, controls, width }: ChartPreviewProps) {

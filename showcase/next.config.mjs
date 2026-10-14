@@ -20,6 +20,11 @@ const showcaseRoot = import.meta.dirname;
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@showcase/migrated-charts"],
+  // The benchmarks page was /charts/overview, then /charts/performance.
+  redirects: async () => [
+    { source: "/charts/overview", destination: "/charts/benchmarks", permanent: true },
+    { source: "/charts/performance", destination: "/charts/benchmarks", permanent: true },
+  ],
   turbopack: {
     resolveAlias: {
       "@showcase/bklit-charts": "./packages/bklit-charts/index.ts",

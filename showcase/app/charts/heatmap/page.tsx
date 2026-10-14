@@ -1,3 +1,4 @@
 "use client";
 import { ChartDetailPage } from "@/components/chart-detail";
-export default function Page() { return <ChartDetailPage route="heatmap" />; }
+import { doc } from "@/lib/chart-docs/heatmap";
+export default function Page() { return <ChartDetailPage route="heatmap" doc={doc} />; }
