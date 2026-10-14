@@ -12,6 +12,15 @@
     "data-visualization"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toomingos/bklit-tanstack-charts-migration.git",
+    "directory": "showcase/migrated"
+  },
+  "homepage": "https://github.com/toomingos/bklit-tanstack-charts-migration/tree/main/showcase/migrated#readme",
+  "bugs": {
+    "url": "https://github.com/toomingos/bklit-tanstack-charts-migration/issues"
+  },
   "sideEffects": false,
   "scripts": {
     "build": "tsdown && cp charts/styles.css dist/styles.css"
