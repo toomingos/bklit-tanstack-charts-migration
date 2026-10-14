@@ -450,6 +450,13 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **Workaround:** `kit/cartesian/hover-overlay.ts` draws crosshair, dots and pill in an element the host owns (a sibling of the renderer svg, `aria-hidden`), driven from `onFocusChange`, with bklit's springs on one rAF loop (Web Animations keyframes cost about 4 ms per move to create). Median busy per move 6.31 [5.18-7.77] (bklit 9.2). The rest is the host sync (band clip attributes about 1.7 ms, `--bkm-hx` tick-fade variable about 1 ms) and the tooltip.
 - **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188) B).
 
+## 67. Sunburst hit polygons approximate arc edges with a few chords
+
+- **Needed:** bklit hit-tests each sector's SVG arc path, so a pointer anywhere on the painted sector, its outer edge included, hovers it (sunburst-segment.tsx).
+- **1.1.0 behaviour:** the sunburst scene's hit geometry is a polygon with 3 to 4 vertices per arc edge (8 for a whole sector, outer vertices at r 149.2 for a 149 px ring), so `findNearestPoint` misses a sub-pixel sliver along each outer edge. A pointer there hovers in bklit and not natively; a 1440 px hover grid found 2 to 7 such points.
+- **Workaround:** `sunburst/focus.ts` falls back to an exact sector test (`exactAt`, `sectorAtPoint` over the painted extents in `sunburst/definition.ts`) when the native lookup finds no point.
+- **Proposal:** hit-test arcs analytically (radius and angle), or sample arc edges by arc length.
+
 ---
 
 ## Retired numbers

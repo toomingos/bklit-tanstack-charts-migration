@@ -9,7 +9,7 @@ import { ZOOM_EASING, ZOOM_MS } from "./easing";
 import { labelFits, lerpArc, poseOf, sameArc, sectorPath, seedArc, unwrapArc } from "./geometry";
 import type { ArcValues } from "./geometry";
 
-/** Class the mark puts on the group that carries one label (its opacity follows the fit rule, so it steps at the threshold). */
+/** Class the mark puts on the group that carries one label (its display follows the fit rule, so a label that does not fit is absent from layout like bklit's unrendered one). */
 export const LABEL_BOX_CLASS = "bk-sb-lbox";
 
 /** The mark's `render` rewrites this feed (target geometry by node key, to tween) before the same scene reaches the layer's `render`,
@@ -163,7 +163,7 @@ export const createSectorLayer = (feed: SectorFeed, renderStart: { readonly curr
       }
       if (node.kind === "group" && node.className?.includes(LABEL_BOX_CLASS) === true) {
         const box = document.createElementNS(SVG_NS, "g");
-        return { apply: (arc) => { box.style.opacity = labelFits(arc, scale) ? "1" : "0"; }, cur: null, element: box, isArea: false, target: null, track: null };
+        return { apply: (arc) => { box.style.display = labelFits(arc, scale) ? "" : "none"; }, cur: null, element: box, isArea: false, target: null, track: null };
       }
       return null;
     };

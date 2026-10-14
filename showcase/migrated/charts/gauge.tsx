@@ -228,11 +228,13 @@ interface GaugeStyleInput {
   readonly enterVars: CSSProperties | undefined;
 }
 
-const useGaugeStyles = ({ trackHeight, minWidth, width, height, fixed, enterVars }: GaugeStyleInput): Record<"track" | "arcRoot" | "arcHost", CSSProperties> => {
-  const track = useMemo((): CSSProperties => ({ height: trackHeight, minWidth: minWidth ?? 200, width: width ?? "100%" }), [trackHeight, minWidth, width]);
+const useGaugeStyles = ({ trackHeight, minWidth, width, height, fixed, enterVars }: GaugeStyleInput): Record<"track" | "linearClip" | "arcRoot" | "arcHost", CSSProperties> => {
+  // bklit's fixed-width linear gauge has no min-width (the minimum belongs to the fluid wrapper, `linearClip`).
+  const track = useMemo((): CSSProperties => ({ height: trackHeight, width: width ?? "100%" }), [trackHeight, width]);
+  const linearClip = useMemo((): CSSProperties => ({ height: trackHeight, minWidth: minWidth ?? 200 }), [trackHeight, minWidth]);
   const arcRoot = useMemo((): CSSProperties => ({ ...enterVars, minWidth: fixed ? undefined : (minWidth ?? 300) }), [enterVars, fixed, minWidth]);
   const arcHost = useMemo((): CSSProperties => ({ containerType: "size", ...(fixed ? { height, width } : { maxWidth: ARC_MAX_WIDTH }) }), [fixed, height, width]);
-  return { arcHost, arcRoot, track };
+  return { arcHost, arcRoot, linearClip, track };
 };
 
 const arcRootClass = (fixed: boolean, className: string | undefined): string => joinClasses("bk-gauge", fixed ? "bk-gauge-fixed" : undefined, className);
@@ -268,7 +270,8 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const renderStart = useRenderStart();
   const linear = orientation === "linear";
   const hostRef = useRef<HTMLDivElement>(null);
-  const trackHeight = height ?? linearHeight;
+  // Fluid linear gauges ignore `height` and use `linearHeight` (gauge.tsx:683-705); only a fixed `width` honours `height` (gauge.tsx:669-679).
+  const trackHeight = linear && width === undefined ? linearHeight : (height ?? linearHeight);
 
   const animate = !prefersReducedMotion();
   const { vars: enterVars, enter: notchEnter } = useEnterVars(animate, enterTransition, enterStaggerScale);
@@ -303,10 +306,13 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
       </div>
     );
+    const labelled = <GaugeLabelLayout align={labelAlign} format={formatOptions} label={defaultLabel} placement={labelPlacement} prefix={prefix} suffix={suffix} value={centerValue}>{track}</GaugeLabelLayout>;
+    // bklit's fluid linear gauge renders track and label inside a `linearHeight`-tall box through visx ParentSize, whose measurement
+    // div is absolute with overflow hidden (gauge.tsx:683-705): the label is clipped to the track height, so a bottom label is not visible. A fixed `width` skips that box.
     return (
       <div className={joinClasses("bk-gauge-flow", className)} data-bkm-chart="" {...hydratingAttrs} data-bkm-gn={enterAttr} style={enterVars}>
         {enterCss}
-        <GaugeLabelLayout align={labelAlign} format={formatOptions} label={defaultLabel} placement={labelPlacement} prefix={prefix} suffix={suffix} value={centerValue}>{track}</GaugeLabelLayout>
+        {width === undefined ? <div className="bk-gauge-clip" style={styles.linearClip}><div className="bk-gauge-clip-box"><div className="bk-gauge-clip-inner">{labelled}</div></div></div> : labelled}
       </div>
     );
   }

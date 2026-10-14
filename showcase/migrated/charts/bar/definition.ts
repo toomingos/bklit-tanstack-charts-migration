@@ -312,7 +312,7 @@ interface ScaleSpec {
   readonly [key: string]: unknown;
 }
 
-function categoryScaleSpec(input: BarInput, categories: readonly string[], axis: BarXAxisProps | BarYAxisProps | undefined, tickValues: string[] | undefined): ScaleSpec {
+function categoryScaleSpec(input: BarInput, categories: readonly string[], axis: BarXAxisProps | BarYAxisProps | undefined, tickValues: string[] | undefined, labelLift: number): ScaleSpec {
   const { horizontal } = input;
   const padding = horizontal ? 8 : 14.4;
   // bklit bar-x-axis.tsx:91-107 only thins by maxLabels, never by collision: `thin: false` below keeps overlapping labels like bklit.
@@ -320,7 +320,7 @@ function categoryScaleSpec(input: BarInput, categories: readonly string[], axis:
   return {
     scale: scaleBand().domain(categories).padding(input.barGap),
     grid: false,
-    axis: axis === undefined ? false : { line: false, ticks, tickLabels: { fontSize: 12, opacity: horizontal ? 0.7 : 1, thin: false } },
+    axis: axis === undefined ? false : { line: false, ticks, tickLabels: { fontSize: 12, opacity: horizontal ? 0.7 : 1, thin: false, ...(labelLift < 0 ? { dy: labelLift } : null) } },
   };
 }
 
@@ -368,10 +368,12 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   const round = !depthOn && barSeries.every((s) => s.bar?.lineCap !== "butt");
   const fillFor = (key: string): string => fillOf.get(key) ?? "var(--chart-line-primary)";
 
+  // Written by the `chart` callback below at every draw, read by the square columns when they render.
+  const live = { innerHeight: Number.POSITIVE_INFINITY };
   // UPSTREAM-GAPS #12 (addendum): a group joining on an update only fades, so the bars stay present at value 0 while loading.
   // Loading keeps the bar marks collapsed to zero (grid, axes and scales stay) so the flip to ready is an update that grows them.
   const own = barSeries.length > 0 ? barSeriesMarks(input, { datums: loading ? datums.map((d) => ({ ...d, value: 0 })) : datums, categories, barSeries, fillFor, enter: barEnter(input), depthOn, round, groupGap, faded }) : { marks: [], hover: [] };
-  const extra = horizontal || loading ? undefined : buildExtraMarks({ datums, series, table, categories, animationDuration: input.animationDuration, faded, uid: input.uid, seed: input.seed, clock: input.clock });
+  const extra = horizontal || loading ? undefined : buildExtraMarks({ live, datums, series, table, categories, animationDuration: input.animationDuration, faded, uid: input.uid, seed: input.seed, clock: input.clock });
   const depth = horizontal || loading ? undefined : depthMarksFor({ table, datums, series, categories, animationDuration: input.animationDuration, groupGap, uid: input.uid, faded, seed: input.seed, clock: input.clock });
   const marks: BarMarkList = [...own.marks, ...(extra?.marks ?? []), ...(depth?.marks ?? [])];
   // bklit dims every bar outside the hovered category (see hover.ts: scoped CSS, not native states).
@@ -391,16 +393,26 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   const categoryAxis = horizontal ? yAxis : xAxis;
   const tickValues = thinnedLabels(categoryAxis, horizontal, categories);
 
-  const categoryScale = categoryScaleSpec(input, categories, categoryAxis, tickValues);
   const valueScale = valueScaleSpec(input, domain, grid, yAxis, rowGuides);
+  const gradients = [...(depth?.gradients ?? []), ...userGradients(table)];
   const spec = erase({
-    marks,
-    scales: { [horizontal ? "y" : "x"]: categoryScale, [horizontal ? "x" : "y"]: valueScale },
-    margin: input.margin,
-    gradients: [...(depth?.gradients ?? []), ...userGradients(table)],
+    chart: ({ height }: { width: number; height: number }) => {
+      live.innerHeight = Math.round(height) - input.margin.top - input.margin.bottom;
+      // bklit lays the x labels at `bottom: 12` of the host (bar-x-axis.tsx), so a plot shorter than its margins (barsquares beside a legend at 390px)
+      // lifts them with it; the renderer floors the plot at 1px, hence the lift by the lost height.
+      // Accepted divergence: bklit's degenerate plot has a negative inner height and its grid rows draw upward from it; the native grid collapses on the 1px floor instead.
+      const labelLift = horizontal ? 0 : Math.min(0, live.innerHeight - 1);
+      const categoryScale = categoryScaleSpec(input, categories, categoryAxis, tickValues, labelLift);
+      return {
+        marks,
+        scales: { [horizontal ? "y" : "x"]: categoryScale, [horizontal ? "x" : "y"]: valueScale },
+        margin: input.margin,
+        gradients,
+        theme: bklitTheme,
+      };
+    },
     // Loading swaps instantly both ways (bklit renders the skeleton in place of the bars, no exit); the grow reveal plays on the flip back.
     motion: (context: ChartMotionContext<BarDatum>) => (loading || snapsOnUpdate(input, context) ? false : undefined),
-    theme: bklitTheme,
     focus: tooltipEnabled ? barFocus(input, categories) : undefined,
     maxFocusDistance: Number.POSITIVE_INFINITY,
     focusRing: false,

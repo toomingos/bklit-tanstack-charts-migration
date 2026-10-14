@@ -190,6 +190,11 @@ export const buildDefinition = (input: Readonly<DefinitionInput>): DomChartDefin
       },
       scene,
       swept,
+      exactAt: (x, y) => {
+        const at = center();
+        const id = at === null ? null : sectorAtPoint(pushes, x - at.x, y - at.y);
+        return id === null ? null : (registry.get(id) ?? null);
+      },
       // Over the hub, gaps and empty corners a move keeps the last sector hovered; the native chart would drop focus there.
       heldAt: (x, y) => {
         const at = center();

@@ -150,6 +150,8 @@ const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): Dom
       indexOf: ringIndexOf,
       navigable: (point) => point.markId.endsWith("-track"),
       // bklit hit-tests its live motion-scaled paths, so the hit annulus follows the painted spring value, not the target.
+      // Accepted divergence: the test runs on pointer moves only. bklit's browser re-dispatches mouse boundary events while a ring scales, so a pointer
+      // still within ~4 px of a ring's inner edge flickers between hovered and unhovered (the 1.03 pop moves the edge past it); ours holds the hover.
       scaleOf: (index, hovered) => liveRingScale(hostRef.current, index, hovered),
       targets,
     }),

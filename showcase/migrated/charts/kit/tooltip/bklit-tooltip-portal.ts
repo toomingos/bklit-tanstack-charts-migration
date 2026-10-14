@@ -12,6 +12,9 @@ interface BklitPortalOptions {
   readonly pinTop?: boolean;
   /** bklit TooltipBox `animate` (default true). `false` is its static path: the layout effect sets the measured position before the first paint. */
   readonly animate?: boolean;
+  /** The anchor is the pointer (`tooltip.anchor: "pointer"`). bklit places the box from a React `MouseEvent`, whose clientX/clientY Chrome truncates to whole pixels (sankey-chart.tsx:171-176 `localPoint`),
+   * while the renderer reads the fractional PointerEvent coordinates; the dropped fraction is taken off the anchor so the box lands on the same pixel. */
+  readonly pointerAnchor?: boolean;
 }
 
 // gap #37 (docs/UPSTREAM-GAPS.md): `className`/`content`/`placement` are static options, so the first-anchor "settle" glide
@@ -34,6 +37,17 @@ const bklitTooltipPortal: ChartTooltipPortalExtension = {
     let anchorY = Number.NaN;
     Object.assign(element.style, { bottom: "auto", margin: "0", position: "absolute", right: "auto", width: "max-content", zIndex: "1" });
     const panel = trackPanelSize(element);
+    // Fraction of the last pointer position's client coordinates (the part a MouseEvent drops). A capture listener on the document runs before the renderer's own handler.
+    const view = element.ownerDocument;
+    let fractionX = 0;
+    let fractionY = 0;
+    const trackFraction = (event: PointerEvent): void => {
+      fractionX = event.clientX - Math.trunc(event.clientX);
+      fractionY = event.clientY - Math.trunc(event.clientY);
+    };
+    if (options.pointerAnchor === true) {
+      view.addEventListener("pointermove", trackFraction, true);
+    }
     const place = (x: number, y: number, { width, height }: PanelSize, offset: number, scene: PanelSize): boolean => {
       const flipped = x + width + offset > scene.width;
       writePosition(
@@ -44,13 +58,19 @@ const bklitTooltipPortal: ChartTooltipPortalExtension = {
       return flipped;
     };
     return {
-      destroy: panel.destroy,
+      destroy: () => {
+        view.removeEventListener("pointermove", trackFraction, true);
+        panel.destroy();
+      },
       hide: () => {
         showFlip = null;
+        fractionX = 0;
+        fractionY = 0;
         element.removeAttribute(SETTLE_ATTR);
       },
-      position: ({ anchor, offset = 16, scene }) => {
+      position: ({ anchor: sceneAnchor, offset = 16, scene }) => {
         const measured = panel.size();
+        const anchor = options.pointerAnchor === true ? { x: sceneAnchor.x - fractionX, y: sceneAnchor.y - fractionY } : sceneAnchor;
         const sameAnchor = anchor.x === anchorX && anchor.y === anchorY;
         anchorX = anchor.x;
         anchorY = anchor.y;

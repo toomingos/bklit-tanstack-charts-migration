@@ -212,7 +212,7 @@ const SankeyChart = ({
         content: sankeyTooltipContent(formatValue),
         motion: TOOLTIP_MOTION,
         offset: 16,
-        portal: bklitTooltipPlacement(),
+        portal: bklitTooltipPlacement({ pointerAnchor: true }),
         // bklit's sankey has no click handling (sankey/*.tsx): a click must not pin the tooltip (dialog role, re-placement, body
         // re-render), and click-then-leave hides it like a plain leave.
         sticky: false,

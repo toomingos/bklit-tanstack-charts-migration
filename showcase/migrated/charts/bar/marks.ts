@@ -26,6 +26,8 @@ export interface ExtraMarkInput {
   readonly seed: boolean;
   /** Entrance clock shared across builds (the seed build and the one after it): later updates resume it, then snap. */
   readonly clock: { at: number | null };
+  /** The plot height of the latest draw, unfloored (written by the definition's `chart` callback before the marks render). */
+  readonly live: { innerHeight: number };
 }
 
 /** Documented node `className` (reference/runtime-and-scene.md "Scene nodes") the hover CSS selects, instead of the key encoding. */
@@ -76,6 +78,7 @@ interface ColumnInput {
   readonly seed: boolean;
   readonly clock: { at: number | null };
   readonly uid: string;
+  readonly live: { innerHeight: number };
 }
 
 interface ColumnFrame {
@@ -161,6 +164,11 @@ function columnMark(input: ColumnInput): ChartMark<BarDatum, string, number> {
       if (sx === undefined || sy === undefined) {
         return { nodes, points };
       }
+      // bklit's value scale runs [innerHeight, 0], so a host shorter than its margins gives every column a negative length and no square (bar-squares.tsx:338-355);
+      // the renderer floors the plot at 1px, which would leave a row of sub-pixel squares.
+      if (input.live.innerHeight <= 0) {
+        return { nodes, points };
+      }
       const bw = sx.bandwidth || 0;
       const size = Math.max(0, (bw - gapPx * (slots - 1)) / slots);
       const radius = size * input.squareRadius;
@@ -213,7 +221,7 @@ export function buildExtraMarks(input: ExtraMarkInput): ExtraMarks {
   const track = propsFor<BarColumnTrackProps>(table, "barColumnTrack").at(0);
   const slots = series.length;
   const hover: HoverTarget[] = [];
-  const common = { uid: input.uid, seed: input.seed, clock: input.clock, animationDuration, staggerMs };
+  const common = { uid: input.uid, seed: input.seed, clock: input.clock, live: input.live, animationDuration, staggerMs };
   if (track !== undefined) {
     for (const { series: s } of squares) {
       // bklit hides the empty track on any hover.
