@@ -8,6 +8,10 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
+  // Absolute base for the og:image / twitter:image URLs that link previews fetch.
+  metadataBase: new URL("https://bklit-tanstack-charts-migration.vercel.app"),
+  openGraph: { siteName: "Bklit TanStack Charts", type: "website" },
+  twitter: { card: "summary_large_image" },
   title: {
     default: "Bklit TanStack Charts",
     template: "%s | Bklit TanStack Charts",
