@@ -1,6 +1,6 @@
 # bklit-ui → TanStack Charts Migration
 
-Proof-of-concept: [bklit-ui](https://github.com/bklit/bklit-ui) chart components reimplemented natively on [TanStack Charts](https://github.com/TanStack/charts) 1.1, keeping bklit's public compound-component API, visual design, animation timing, hover, focus and keyboard behaviour.
+[bklit-ui](https://github.com/bklit/bklit-ui)'s chart components rebuilt natively on [TanStack Charts](https://github.com/TanStack/charts) 1.1 and published as [`bklit-tanstack-charts`](showcase/migrated/README.md). They keep bklit's public compound-component API, visual design, animation timing, hover, focus and keyboard behaviour.
 
 **Live Showcase: https://bklit-tanstack-charts-migration.vercel.app**
 

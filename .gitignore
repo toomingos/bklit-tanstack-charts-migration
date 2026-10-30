@@ -27,7 +27,10 @@ __*
 /docs/METRICS.md
 /docs/upstream-issues/
 
-# QA tab tools output
+# QA tab tools (local only) and their output
+/cap.sh
+/tab.py
+/tabsrv.py
 /captures/
 /tabsrv.log
 /chat.jsonl

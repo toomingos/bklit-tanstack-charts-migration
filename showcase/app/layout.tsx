@@ -13,7 +13,6 @@ export const metadata: Metadata = {
     template: "%s | Bklit TanStack Charts",
   },
   description: "Bklit UI's charts, now on TanStack Charts. 25 charts and utilities for React.",
-  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -27,6 +26,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       lang="en"
       suppressHydrationWarning
     >
+      <head>
+        <script
+          async
+          data-code="2026103016578723"
+          id="omnimetrixjs"
+          src="https://track.omnimetrix.io/2026103016578723/om.js"
+        />
+      </head>
       <body className="flex min-h-screen flex-col">
         <ThemeProvider
           attribute="class"

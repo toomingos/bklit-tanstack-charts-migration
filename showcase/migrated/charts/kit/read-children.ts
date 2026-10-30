@@ -9,12 +9,42 @@ export type ChildTable = ReadonlyMap<string, readonly Record<string, unknown>[]>
 
 type CarrierProps = Record<string, unknown> & { children?: ReactNode };
 
+const REACT_LAZY = Symbol.for("react.lazy");
+
+type ComponentType = ((...args: readonly unknown[]) => unknown) | Readonly<Record<string, unknown>>;
+
+const asComponent = (type: unknown): ComponentType | undefined => (isFunction(type) || isRecord(type) ? type : undefined);
+
+/**
+ * The component behind an element type. Children passed from a React Server Component (e.g. `<Line>` written in a
+ * Next.js page) arrive as `React.lazy` wrappers around the client component, so their role and name are invisible until
+ * the wrapper is resolved. Resolving it the way React does lets the server render the chart; a module that is not loaded
+ * yet throws, and the carrier is then picked up by registration after mount, as before.
+ */
+const componentOf = (type: unknown): ComponentType | undefined => {
+  if (!(isRecord(type) && type.$$typeof === REACT_LAZY)) {
+    return asComponent(type);
+  }
+  // React's lazy type carries `_init(_payload)`, which returns the loaded component or throws while it loads.
+  // oxlint-disable-next-line eslint/no-underscore-dangle -- React's own lazy fields
+  const { _init: init, _payload: payload } = type;
+  if (!isFunction(init)) {
+    return undefined;
+  }
+  try {
+    return asComponent(init(payload));
+  } catch {
+    return undefined;
+  }
+};
+
 const roleOfType = (type: unknown): string | undefined => {
-  if (!(isFunction(type) || isRecord(type))) {
+  const component = componentOf(type);
+  if (component === undefined) {
     return undefined;
   }
   // SAFETY: a role is a plain own-property marker; reading it off any function or object is sound.
-  const role = (type as { readonly [CHART_ROLE]?: unknown })[CHART_ROLE];
+  const role = (component as { readonly [CHART_ROLE]?: unknown })[CHART_ROLE];
   return isString(role) ? role : undefined;
 };
 
@@ -98,9 +128,13 @@ export const customChildren = (children: ReactNode): { readonly position: number
 };
 
 export const displayNameOf = (type: ReactElement["type"]): string | undefined => {
-  if (isString(type)) {
+  const component = componentOf(type);
+  if (component === undefined) {
     return undefined;
   }
-  const displayName = "displayName" in type ? type.displayName : undefined;
-  return isString(displayName) ? displayName : type.name;
+  const displayName = "displayName" in component ? component.displayName : undefined;
+  if (isString(displayName)) {
+    return displayName;
+  }
+  return isString(component.name) ? component.name : undefined;
 };

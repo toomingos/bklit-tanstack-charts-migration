@@ -22,5 +22,5 @@ SOFTWARE.
 
 ---
 
-This project includes reference code from bklit/bklit-ui (MIT licensed).
-Original copyright notices are retained in repos/bklit-ui/.
+Portions are derived from bklit-ui (https://github.com/bklit/bklit-ui),
+MIT License, Copyright (c) 2026 uixmat. See NOTICE for its notice.
