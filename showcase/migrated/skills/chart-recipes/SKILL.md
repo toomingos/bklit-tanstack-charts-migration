@@ -8,7 +8,7 @@ description: >
 metadata:
   type: core
   library: bklit-tanstack-charts
-  library_version: "0.1.0"
+  library_version: "0.1.1"
 sources:
   - "bklit-tanstack-charts:docs/line-chart.md"
   - "bklit-tanstack-charts:docs/radar-chart.md"

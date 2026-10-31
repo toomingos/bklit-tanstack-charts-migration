@@ -1,6 +1,6 @@
 {
   "name": "bklit-tanstack-charts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TanStack Bklit UI Charts: bklit-ui's chart components rebuilt natively on TanStack Charts.",
   "keywords": [
     "tanstack-intent",

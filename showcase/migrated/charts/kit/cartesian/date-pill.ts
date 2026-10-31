@@ -154,6 +154,11 @@ export const OWN_PILL_NAMES: PillHostNames = { active: "data-bkm-pill", fx: "--b
 
 const PILL_SAME_MAX = 4;
 
+/** Host var holding the date pill's live x (svg px) while it springs (hover-overlay.ts writes it each frame). The tick fade keys on it, so labels hide where the pill is,
+ * not at the focused x the pill is still gliding to; charts whose pill is not drawn by the overlay fall back to the focus x.
+ * Accepted divergence: bklit keys the fade on the focused row's x (x-axis.tsx:639, `tooltipData.x`); on a fast sweep that hid labels ahead of the pill, under the cursor. */
+export const PILL_LIVE_X = "--bkm-pill-x";
+
 /** bklit's XAxisLabel hides every tick whose label text equals the hovered row's label, whatever its distance. CSS cannot compare text,
  * so the host carries the x (svg px) of those ticks and the static rule below zeroes the tick sitting on one. */
 export function writePillSameLabel(host: HTMLElement, tickTimes: readonly number[], time: number, px: (t: number) => number, names: PillHostNames = DEFAULT_PILL_NAMES): void {
@@ -201,7 +206,7 @@ export function syncPillHost(host: HTMLElement, tickTimes: PillTicks, spanMs: nu
   raiseAttribute(host, names.active);
 }
 
-/** Fixed-text pill tick rule: pill size is per-definition, focus x lives on the host as `--bkm-hx`, the fade is keyed on `data-bkm-hover`. Null without geometry.
+/** Fixed-text pill tick rule: pill size is per-definition, the pill's live x lives on the host as `--bkm-pill-x` (focus x `--bkm-hx` before it is written), the fade is keyed on `data-bkm-hover`. Null without geometry.
  * Tick text and pill nodes are addressed through the key prefix / suffix (gap #36: no documented class or id hook). */
 export function pillTickStaticCss(
   scope: string,
@@ -217,16 +222,14 @@ export function pillTickStaticCss(
   // bklit x-axis.tsx: opacity ramps linearly from tickerHalfWidth to +20px from the pointer, 0.4s ease-in-out.
   const sel = `${scope} text${keyStarts(keyPrefix)}`;
   const half = reachPx - 12;
+  const fx = `var(${PILL_LIVE_X}, var(${names.fx},-9999))`;
   const same = Array.from({ length: PILL_SAME_MAX }, (_, i) => `calc((abs(attr(x type(<number>)) - var(${names.same}${i},-9999)) - .5) * 1000)`).join(", ");
   return [
+    // Both ways, like bklit: the overlay pill paints above the axis (hover-overlay.ts), so a tick it sweeps past stays under the capsule and barely dips, with no trail of hidden ticks behind it.
     `${sel}${NOT_MOTION}{transition:opacity .4s ease-in-out}`,
-    // The native axes paint above the pill (bklit's ticks sit under it): a tick inside the hidden zone drops to 0 at once instead of ghosting through the capsule for its 0.4s fade; typed attr() is Chromium-only (133+),
-    // so both rules sit under `@supports` (unguarded, the var() keeps them past parsing and they are invalid at computed time: a 0s transition and `opacity:1!important`) and other browsers keep every tick visible.
-    typedAttr([
-    `${scope}[${names.active}] text${keyStarts(keyPrefix)}${NOT_MOTION}{transition-duration:calc(clamp(0, (abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) * 1000, 1) * .4s)}`,
+    // Typed attr() is Chromium-only (133+), so the rule sits under `@supports` (unguarded, the var() keeps it past parsing and it is invalid at computed time: `opacity:1!important`) and other browsers keep every tick visible.
     // A tick within 0.5px of a same-label x is hidden outright (min with a 0 step), like bklit's `label === hoveredLabel` branch.
-    `${scope}[${names.active}] text${keyStarts(keyPrefix)}{opacity:clamp(0, min(calc((abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) / 20), ${same}), 1)!important}`,
-    ].join("")),
+    typedAttr(`${scope}[${names.active}] text${keyStarts(keyPrefix)}{opacity:clamp(0, min(calc((abs(attr(x type(<number>)) - ${fx}) - ${half}) / 20), ${same}), 1)!important}`),
   ].join("");
 }
 

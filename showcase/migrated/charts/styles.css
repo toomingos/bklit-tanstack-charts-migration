@@ -13,6 +13,7 @@
 @property --bkm-bfx { syntax: "*"; inherits: false; }
 @property --bkm-rp { syntax: "<number>"; inherits: true; initial-value: 1; }
 @property --bkm-pfx { syntax: "*"; inherits: false; }
+@property --bkm-pill-x { syntax: "*"; inherits: false; }
 @property --bkm-hl0 { syntax: "*"; inherits: false; }
 @property --bkm-hl1 { syntax: "*"; inherits: false; }
 @property --bkm-same0 { syntax: "*"; inherits: false; }
@@ -161,7 +162,7 @@
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o > .bkm-wipe-i > g > *,
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__axes > text,
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__focus-guide-layer > g {
-  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit;
+  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-pill-x: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit;
   --bkm-same0: inherit; --bkm-same1: inherit; --bkm-same2: inherit; --bkm-same3: inherit;
   --bkm-psame0: inherit; --bkm-psame1: inherit; --bkm-psame2: inherit; --bkm-psame3: inherit;
 }

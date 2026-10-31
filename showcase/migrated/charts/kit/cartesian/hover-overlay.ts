@@ -1,12 +1,13 @@
 // The hover indicator of a cartesian chart (active markers, crosshair rule, date pill, one dot per series) as an element we own, a sibling of the renderer's
-// svg inside the chart host. The date pill and its day/month stacks (HTML) glide on the compositor through the shared WAAPI `springDriver`; the rule (an svg mark,
-// not composited) and the dots (two axes) follow bklit's springs on one shared rAF loop (`springOf`). The renderer's focus-guide layer stays empty:
-// it re-serializes its whole fragment to markup and reparses it on every move (UPSTREAM-GAPS #66), which dominated the move cost.
+// svg inside the chart host. All of it follows bklit's springs on one shared rAF loop (`springOf`), as motion's frame loop does; not WAAPI, whose fresh animation per
+// retarget sat pending two frames on its start value, so a fast sweep left the pill lurching. The renderer's focus-guide layer stays empty: it re-serializes
+// its whole fragment to markup and reparses it on every move (UPSTREAM-GAPS #66), which dominated the move cost.
+import { writeVar } from "../host-write";
 import { REST_PX, springOf } from "../motion/spring-curve";
-import { springDriver } from "../motion/spring-animate";
 import { CROSSHAIR_SPRING, DATE_PILL_SPRING } from "../motion/springs";
 import type { Spring } from "../motion/springs";
 import type { ChartMargin } from "../theme";
+import { PILL_LIVE_X } from "./date-pill";
 import type { PillLayout } from "./date-pill";
 import type { PlotSnapshot } from "./plot-size";
 
@@ -114,8 +115,10 @@ interface Sink {
   last: string;
 }
 
-/** An element whose `transform` follows a spring on each axis, velocity kept across retargets (motion's `useSpring`, as bklit's tooltip dots and date ticker do). */
+/** An element whose `transform` follows a spring on each axis, velocity kept across retargets (motion's `useSpring`, as bklit's tooltip dots and date ticker do).
+ * `onMove` receives the values on every frame they are written (and on a jump). */
 class Glide {
+  public onMove: ((values: readonly number[]) => void) | null = null;
   private readonly axes: Axis[];
   private readonly sinks: Sink[] = [];
   constructor(
@@ -138,6 +141,8 @@ class Glide {
         sink.el.style.transform = next;
       }
     }
+    // Outside the dedupe: a device-px-rounded transform can stop changing before the value lands on its target.
+    this.onMove?.(values);
   }
 
   /** Places the element at `values` with no motion. */
@@ -176,27 +181,6 @@ class Glide {
   }
 }
 
-/** An HTML element whose `transform` follows a spring on one axis as a Web Animation on the compositor (the shared velocity-preserving `springDriver`), the static transform holding the target. */
-class Slide {
-  private target = 0;
-  constructor(private readonly el: HTMLElement, private readonly spring: Spring, private readonly css: (values: readonly number[]) => string) {
-    el.style.transform = css([0]);
-  }
-
-  jump(value: number): void {
-    this.target = value;
-    this.el.style.transform = this.css([value]);
-    springDriver.play({ affine: true, el: this.el, frame: (v) => ({ transform: this.css([v]) }), from: value, rest: value, spring: this.spring, target: value });
-  }
-
-  glide(value: number): void {
-    const rest = this.target;
-    this.target = value;
-    this.el.style.transform = this.css([value]);
-    springDriver.play({ affine: true, el: this.el, frame: (v) => ({ transform: this.css([v]) }), rest, spring: this.spring, target: value });
-  }
-}
-
 const translate = (v: readonly number[]): string => `translate(${v[0] ?? 0}px,${v[1] ?? 0}px)`;
 const translateX = (v: readonly number[]): string => `translateX(${v[0] ?? 0}px)`;
 /** The pill's own layer sits on whole device pixels, where `left` used to snap it (bklit places its pill by `left`, chart-tooltip.tsx:422-423); a fractional layer offset would resample the text. */
@@ -221,9 +205,9 @@ interface DotView {
 
 interface PillView {
   readonly el: HTMLElement;
-  readonly glide: Slide;
-  readonly months: Slide | null;
-  readonly days: Slide | null;
+  readonly glide: Glide;
+  readonly months: Glide | null;
+  readonly days: Glide | null;
   readonly text: HTMLElement | null;
 }
 
@@ -333,7 +317,7 @@ export class HoverOverlay {
     if (!pill || !model.pill) {
       return;
     }
-    pill.glide[enter ? "jump" : "glide"](x);
+    pill.glide[enter ? "jump" : "glide"]([x]);
     const index = model.indexOf(time);
     const layout = model.pill.layout;
     if (pill.text) {
@@ -346,13 +330,13 @@ export class HoverOverlay {
     const run = layout.monthOf[index] ?? 0;
     // bklit's stacks mount at row 0 and spring to the focused row on every hover start (date-ticker.tsx:81-92); the month stack only moves when its run changes.
     if (enter) {
-      pill.days?.jump(0);
-      pill.months?.jump(0);
+      pill.days?.jump([0]);
+      pill.months?.jump([0]);
       this.monthRun = -1;
     }
-    pill.days?.glide(-index * PILL_ROW);
+    pill.days?.glide([-index * PILL_ROW]);
     if (this.monthRun !== run) {
-      pill.months?.glide(-run * PILL_ROW);
+      pill.months?.glide([-run * PILL_ROW]);
       this.monthRun = run;
     }
   }
@@ -438,6 +422,18 @@ export class HoverOverlay {
     return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, this.ticker) : null };
   }
 
+  /** The pill's x spring (bklit's pill rides the crosshair's tooltipSpring); each frame it writes the pill's live x (svg px) to the host, where the x-axis tick fade reads it (date-pill.ts pillTickStaticCss). */
+  private pillGlide(wrap: HTMLElement): Glide {
+    const glide = new Glide(wrap, CROSSHAIR_SPRING, 1, translateXDevicePx, this.ticker);
+    glide.onMove = ([x = 0]) => {
+      const host = this.root.parentElement;
+      if (host) {
+        writeVar(host, PILL_LIVE_X, x.toFixed(1));
+      }
+    };
+    return glide;
+  }
+
   private buildPill(spec: NonNullable<HoverOverlayModel["pill"]>, plot: OverlayPlot): PillView {
     const wrap = div("bkm-hov-pill", this.root);
     // The native pill sat with its 32px capsule centred 20px above the host bottom (bklit date pill: bottom 4px, z-50).
@@ -448,9 +444,9 @@ export class HoverOverlay {
       const text = document.createElement("span");
       text.className = "bkm-hov-pill-text";
       div("bkm-hov-pill-row", box).append(text);
-      return { days: null, el: wrap, glide: new Slide(wrap, CROSSHAIR_SPRING, translateXDevicePx), months: null, text };
+      return { days: null, el: wrap, glide: this.pillGlide(wrap), months: null, text };
     }
-    const column = (values: readonly string[]): Slide => {
+    const column = (values: readonly string[]): Glide => {
       const col = div("bkm-hov-pill-col", box);
       const stack = div("bkm-hov-pill-stack", col);
       for (const value of values) {
@@ -458,11 +454,11 @@ export class HoverOverlay {
         row.textContent = value;
       }
       // bklit's ticker springs both stacks with useSpring(0, { stiffness: 400, damping: 35 }) (tooltip/date-ticker.tsx:81-82).
-      return new Slide(stack, DATE_PILL_SPRING, translateY);
+      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, this.ticker);
     };
     const months = column(layout.months);
     // bklit always mounts the day stack, empty for month-only labels: its gap-1 keeps the capsule 4px wider (date-ticker.tsx:96-125).
     const days = column(layout.days);
-    return { days, el: wrap, glide: new Slide(wrap, CROSSHAIR_SPRING, translateXDevicePx), months, text: null };
+    return { days, el: wrap, glide: this.pillGlide(wrap), months, text: null };
   }
 }
